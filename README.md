@@ -1,27 +1,27 @@
 # OPDBKit
 
-Swift Package, das die Daten der [Open Pinball Database (OPDB)](https://opdb.org) lädt, lokal mit
-**SwiftData** speichert und eine Such- und Detail-API bereitstellt.
+A Swift package that downloads the data of the [Open Pinball Database (OPDB)](https://opdb.org), stores it
+locally with **SwiftData**, and provides a search and detail API.
 
-Datenquelle: `https://mp-data.sfo3.cdn.digitaloceanspaces.com/opdb-v2.json`
+Data source: `https://mp-data.sfo3.cdn.digitaloceanspaces.com/opdb-v2.json`
 
-- **Keine Abhängigkeiten** – nur Foundation und SwiftData.
-- **Automatisches Update beim Öffnen** über bedingte HTTP-Anfragen (`ETag` / `Last-Modified`).
-  Ist nichts neu, antwortet der Server mit `304` und es wird nichts heruntergeladen.
-- **Inkrementeller Import** – Einträge werden per `opdbId` abgeglichen; nur neue, geänderte
-  (`updatedAt`) und entfernte Einträge werden geschrieben. Alles wird mit einem einzigen `save()`
-  übernommen; bei einem Fehler bleibt der alte Stand erhalten.
-- **Hintergrund-Kontexte** (`@ModelActor`) für Lesen und Import – die App kann während eines Updates weiter suchen.
-- **SwiftUI-tauglich** – `opdb.modelContainer` lässt sich direkt für `@Query` verwenden.
-- **Tolerantes Decoding** – fehlerhafte Einzeleinträge werden übersprungen statt den Import abzubrechen.
+- **No dependencies** – just Foundation and SwiftData.
+- **Automatic update on open** via conditional HTTP requests (`ETag` / `Last-Modified`).
+  If nothing has changed, the server responds with `304` and nothing is downloaded.
+- **Incremental import** – entries are matched by `opdbId`; only new, changed
+  (`updatedAt`) and removed entries are written. Everything is committed with a single `save()`;
+  if an error occurs, the previous state is kept.
+- **Background contexts** (`@ModelActor`) for reading and importing – the app can keep searching during an update.
+- **SwiftUI-ready** – `opdb.modelContainer` can be used directly with `@Query`.
+- **Lenient decoding** – malformed individual entries are skipped instead of aborting the import.
 - iOS 17+ / macOS 14+, Swift 5.9+ (Xcode 15+).
 
-## Einbinden
+## Installation
 
-In Xcode: *File → Add Package Dependencies…*, die URL `https://github.com/KaiTeuber/OPDBKit.git`
-eingeben und `OPDBKit` zum App-Target hinzufügen.
+In Xcode: *File → Add Package Dependencies…*, enter the URL `https://github.com/KaiTeuber/OPDBKit.git`
+and add `OPDBKit` to your app target.
 
-In einem anderen Swift Package über `Package.swift`:
+In another Swift package via `Package.swift`:
 
 ```swift
 dependencies: [
@@ -32,22 +32,22 @@ targets: [
 ]
 ```
 
-## Verwendung
+## Usage
 
 ```swift
 import OPDBKit
 
-// Öffnen – prüft automatisch auf eine neue Version.
-// Erster Start (leere DB): wartet auf den Download. Danach: Prüfung läuft im Hintergrund.
+// Open – automatically checks for a new version.
+// First launch (empty database): waits for the download. Afterwards: the check runs in the background.
 let opdb = try await OPDB.open()
 
-// Suche (Präfixsuche über Name, Kurzname, Hersteller, Personen, Features, IPDB-ID …)
+// Search (prefix search across name, short name, manufacturer, people, features, IPDB ID …)
 let hits = try await opdb.search("addams fam")
 for hit in hits {
     print(hit.name, hit.year ?? 0, hit.manufacturerName ?? "")
 }
 
-// Suche mit Filter & Sortierung
+// Search with filter & sorting
 let nineties = try await opdb.search(
     "",
     filter: SearchFilter(manufacturerIds: [12], years: 1990...1999),
@@ -55,31 +55,31 @@ let nineties = try await opdb.search(
     limit: 100
 )
 
-// Alle Details eines Geräts
+// All details of a machine
 if let details = try await opdb.details(for: "G0l8P-M85d9") {
     let machine = details.machine
     print(machine.name, machine.manufacturer?.fullName ?? "")
     print(machine.primaryImage?.largeURL as Any)
     print(machine.people.map(\.name), machine.features.map(\.name))
-    print("Gruppe:", details.group?.name ?? "–")
-    print("Varianten:", details.variants.map(\.name))
-    print("Aliase:", details.aliases.map(\.name))
+    print("Group:", details.group?.name ?? "–")
+    print("Variants:", details.variants.map(\.name))
+    print("Aliases:", details.aliases.map(\.name))
 }
 
-// Weitere Abrufe
+// More lookups
 let machine = try await opdb.machine(id: "G0l2e-Mp4Oz")
 let byIPDB = try await opdb.machine(ipdbId: 2619)
 let collection = try await opdb.machines(ids: myCollectionIDs)
-let manufacturers = try await opdb.manufacturers()      // für Filter-UIs
-let info = try await opdb.dataInfo()                    // Anzahl, Importzeitpunkt, ETag …
+let manufacturers = try await opdb.manufacturers()      // for filter UIs
+let info = try await opdb.dataInfo()                    // count, import date, ETag …
 ```
 
-### Updates manuell auslösen / beobachten
+### Triggering and observing updates manually
 
 ```swift
 let result = try await opdb.updateIfNeeded()            // .upToDate / .updated(summary) / .skipped
-let forced = try await opdb.updateIfNeeded(force: true) // immer neu laden
-let available = try await opdb.isUpdateAvailable()      // nur prüfen (HEAD), nichts laden
+let forced = try await opdb.updateIfNeeded(force: true) // always reload
+let available = try await opdb.isUpdateAvailable()      // check only (HEAD), download nothing
 
 Task {
     for await status in await opdb.statusUpdates() {
@@ -88,19 +88,19 @@ Task {
 }
 ```
 
-### Konfiguration
+### Configuration
 
 ```swift
 let configuration = OPDBConfiguration(
-    storeLocation: .applicationSupport, // oder .file(url) / .inMemory (Previews)
+    storeLocation: .applicationSupport, // or .file(url) / .inMemory (previews)
     checkForUpdatesOnOpen: true,
-    minimumCheckInterval: 60 * 60,    // höchstens stündlich prüfen (Standard: 0 = bei jedem Öffnen)
-    seedFileURL: Bundle.main.url(forResource: "opdb-v2", withExtension: "json") // optionaler Offline-Startbestand
+    minimumCheckInterval: 60 * 60,    // check at most once per hour (default: 0 = on every open)
+    seedFileURL: Bundle.main.url(forResource: "opdb-v2", withExtension: "json") // optional offline seed data
 )
 let opdb = try await OPDB.open(configuration: configuration)
 ```
 
-### SwiftUI mit `@Query`
+### SwiftUI with `@Query`
 
 ```swift
 @main
@@ -129,72 +129,72 @@ struct MachineList: View {
 }
 ```
 
-Hinweis: Der Container enthält nur die OPDB-Modelle. Eigene SwiftData-Modelle der App (z. B. die
-Sammlung) gehören in einen eigenen Container und referenzieren Geräte über die `opdbId`.
-Für Suche mit Ranking und Details ist die `OPDB`-API gedacht; `@Query` eignet sich für einfache Listen.
+Note: the container holds only the OPDB models. Your app's own SwiftData models (e.g. a
+collection) belong in a separate container and reference machines by their `opdbId`.
+The `OPDB` API is meant for ranked search and details; `@Query` is suited for simple lists.
 
-## Datenmodell
+## Data model
 
-| Typ | Inhalt |
+| Type | Contents |
 |---|---|
-| `OPDBMachine` | SwiftData-`@Model` mit den Such-/Listenfeldern und dem vollständigen Eintrag (`.machine`) |
-| `Machine` | Vollständiger Eintrag: IDs, Namen, Jahr, Herstellungsdatum, Typ (EM/SS), Display, Spielerzahl, Hersteller, IPDB-ID, Links (Rulesheet, Pinball Cards, Competition Notes …), Bilder, Personen, Features, Keywords |
-| `MachineSummary` | Kompaktes Suchergebnis inkl. Vorschaubild-URL |
-| `MachineDetails` | `Machine` + Gruppe, Eltern-Gerät (bei Alias), Varianten, Aliase |
-| `EntryType` | `.machineGroup` (Titel über alle Editionen), `.machine` (konkretes Gerät), `.alias` (Variante mit eigenem Namen) |
+| `OPDBMachine` | SwiftData `@Model` with the search/list fields and the complete entry (`.machine`) |
+| `Machine` | Complete entry: IDs, names, year, manufacture date, type (EM/SS), display, player count, manufacturer, IPDB ID, links (rulesheet, Pinball Cards, competition notes …), images, people, features, keywords |
+| `MachineSummary` | Compact search result incl. thumbnail URL |
+| `MachineDetails` | `Machine` + group, parent machine (for aliases), variants, aliases |
+| `EntryType` | `.machineGroup` (title across all editions), `.machine` (specific machine), `.alias` (variant with its own name) |
 
-Standardmäßig liefert die Suche nur `.machine` und `.alias` – ein Titel erscheint dadurch nicht doppelt als Gruppe
-und Gerät. Mit `SearchFilter.groupsOnly` bzw. `.all` lässt sich das ändern.
+By default, search returns only `.machine` and `.alias` – so a title doesn't appear twice as both group
+and machine. Use `SearchFilter.groupsOnly` or `.all` to change this.
 
-## Lokalisierung
+## Localization
 
-Das Package ist auf Englisch (Ausgangssprache) und Deutsch lokalisiert; die Texte liegen in
+The package is localized in English (source language) and German; the strings live in
 `Sources/OPDBKit/Resources/Localizable.xcstrings`.
 
-- Fehlermeldungen von `OPDBError` (`error.localizedDescription`) erscheinen in der Sprache der App.
-- `MachineType`, `DisplayType` und `EntryType` liefern über `localizedName` eine lesbare Bezeichnung,
-  z. B. `machine.type?.localizedName` → „Elektromechanisch“ bzw. “Electro-mechanical”.
+- Error messages from `OPDBError` (`error.localizedDescription`) appear in the app's language.
+- `MachineType`, `DisplayType` and `EntryType` provide a human-readable label via `localizedName`,
+  e.g. `machine.type?.localizedName` → “Electro-mechanical” or „Elektromechanisch“.
 
-Die Inhalte der Datenbank selbst (Namen, Beschreibungen, Features) kommen unverändert von opdb.org
-und sind englisch.
+The database content itself (names, descriptions, features) comes unchanged from opdb.org
+and is in English.
 
-## Technische Details
+## Technical details
 
-- `OPDBMachine` speichert Filter-/Sortierfelder als Attribute und den kompletten Eintrag als JSON.
-  Listenabfragen laden das JSON nicht mit (`propertiesToFetch`).
-- Suche: normalisierter Suchindex (klein, ohne Akzente). Der längste Suchbegriff wird per `#Predicate`
-  in der Datenbank gefiltert, die übrigen Begriffe und Filter im Speicher; danach Ranking
-  (exakter Name/Kurzname → Name beginnt mit … → Wortanfänge im Namen → sonstige Treffer).
-  Ohne Treffer folgt eine Teilstring-Suche. Alphabetisches Blättern ohne Suchtext läuft komplett in der Datenbank.
-- Ist der Store nach einer Modelländerung inkompatibel, wird er gelöscht, neu angelegt und neu geladen.
-- Kein CloudKit-Sync (`cloudKitDatabase: .none`); der Store liegt in *Application Support* und ist vom
-  iCloud-Backup ausgeschlossen.
+- `OPDBMachine` stores filter/sort fields as attributes and the complete entry as JSON.
+  List queries don't load the JSON (`propertiesToFetch`).
+- Search: normalized search index (lowercased, without diacritics). The longest search term is filtered in
+  the database via `#Predicate`, the remaining terms and filters in memory; then results are ranked
+  (exact name/short name → name starts with … → word prefixes in the name → other matches).
+  If there are no matches, a substring search follows. Alphabetical browsing without search text runs entirely in the database.
+- If the store becomes incompatible after a model change, it is deleted, recreated and reloaded.
+- No CloudKit sync (`cloudKitDatabase: .none`); the store lives in *Application Support* and is excluded
+  from iCloud backup.
 
-## Beispiel-App
+## Example app
 
-Unter `Examples/OPDBExample/OPDBExample.xcodeproj` liegt ein Xcode-Projekt mit einer kleinen SwiftUI-App (iOS 17+):
+`Examples/OPDBExample/OPDBExample.xcodeproj` contains an Xcode project with a small SwiftUI app (iOS 17+) that:
 
-- lädt beim Start die aktuelle Geräteliste (erster Start: Download, danach Update-Prüfung im Hintergrund),
-- zeigt alle Geräte mit Vorschaubild, Hersteller und Jahr,
-- filtert die Liste über das Suchfeld oben,
-- zeigt beim Antippen eines Geräts alle Informationen tabellarisch (Allgemein, Technik, Hersteller,
-  Personen, Features, Links, Bilder, Gruppe/Varianten/Aliase, Metadaten),
-- Pull-to-Refresh prüft auf eine neue Datenversion.
+- loads the current machine list on launch (first launch: download, afterwards update check in the background),
+- shows all machines with thumbnail, manufacturer and year,
+- filters the list via the search field at the top,
+- shows all information for a machine in a table when tapped (general, technical, manufacturer,
+  people, features, links, images, group/variants/aliases, metadata),
+- checks for a new data version on pull-to-refresh.
 
-Starten: `Examples/OPDBExample/OPDBExample.xcodeproj` in Xcode (15+) öffnen, einen iOS-Simulator wählen und
-ausführen (⌘R). Für ein echtes Gerät unter *Signing & Capabilities* ein Team wählen.
-OPDBKit ist als lokales Package (`../..`) eingebunden – Änderungen am Package wirken sich sofort aus.
-(Das Haupt-Package nicht gleichzeitig in einem zweiten Xcode-Fenster öffnen.)
+To run it: open `Examples/OPDBExample/OPDBExample.xcodeproj` in Xcode (15+), choose an iOS simulator and
+run (⌘R). For a real device, select a team under *Signing & Capabilities*.
+OPDBKit is included as a local package (`../..`) – changes to the package take effect immediately.
+(Don't open the main package in a second Xcode window at the same time.)
 
 ```
 Examples/OPDBExample/
 ├── OPDBExample.xcodeproj
 └── OPDBExample/
-    ├── OPDBExampleApp.swift      App-Einstieg
-    ├── MachineListModel.swift    Laden, Suche, Update-Status (@Observable)
-    ├── MachineListView.swift     Liste mit Suchfeld
-    ├── MachineDetailView.swift   Tabellarische Detailansicht
-    ├── Labels.swift              Deutsche Bezeichnungen für OPDB-Codes
+    ├── OPDBExampleApp.swift      App entry point
+    ├── MachineListModel.swift    Loading, search, update status (@Observable)
+    ├── MachineListView.swift     List with search field
+    ├── MachineDetailView.swift   Tabular detail view
+    ├── Labels.swift              German labels for OPDB codes
     └── Assets.xcassets
 ```
 
@@ -204,12 +204,12 @@ Examples/OPDBExample/
 swift test
 ```
 
-Die Tests laufen mit einem Mock-Netzwerk und einer kleinen Fixture-Datei (keine echten Downloads).
+The tests run against a mock network and a small fixture file (no real downloads).
 
-## Lizenz der Daten
+## Data license
 
-Die OPDB-Daten stammen von opdb.org. Bitte die dortigen Nutzungsbedingungen beachten und die Quelle in der App nennen.
+The OPDB data comes from opdb.org. Please respect their terms of use and credit the source in your app.
 
-## Lizenz
+## License
 
-Der Code von OPDBKit steht unter der [MIT-Lizenz](LICENSE). Für die OPDB-Daten gelten die Bedingungen von opdb.org (siehe oben).
+The OPDBKit code is released under the [MIT License](LICENSE). The OPDB data is subject to the terms of opdb.org (see above).
